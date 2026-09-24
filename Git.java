@@ -45,7 +45,20 @@ public class Git {
         return null;
     }
 
+    public void add(String filePath) {
+        String fileHash = this.hashFile(filePath);
+        String blobPathString = "./git/objects/" + fileHash;
 
+        File blob = new File(blobPathString);
+
+        try {
+            blob.createNewFile();
+            byte[] contents = Files.readAllBytes(Path.of(filePath));
+            Files.write(Path.of(blobPathString), contents);
+        } catch (Exception e) {
+            System.out.println("File adding exception:" + e);
+        }
+    }
 }
 
 
