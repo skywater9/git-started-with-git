@@ -9,6 +9,7 @@ public class Git {
     public static void main(String[] args) {
         Git myGit = new Git();
         myGit.init();
+        System.out.println(myGit.hashFile("file.txt"));
     }
 
     // Initializes repository structure in ./git/: Objects/, Index, and HEAD
@@ -39,10 +40,12 @@ public class Git {
             return HexFormat.of().formatHex(hash);
 
         } catch (Exception e) {
-            System.out.println(e);
+            System.out.println("File hashing exception:" + e);
         }
         return null;
     }
+
+
 }
 
 
