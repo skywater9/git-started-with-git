@@ -4,6 +4,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
 
 public class Git {
@@ -33,12 +34,16 @@ public class Git {
 
     //
     public String hashFile(String filePath) {
-        
-        String fileContents = Files.readString(Path.of(filePath));
+        try {
+            String fileContents = Files.readString(Path.of(filePath));
+            byte[] hash = MessageDigest.getInstance("SHA-1")
+                    .digest(fileContents.getBytes(StandardCharsets.UTF_8));
+            return HexFormat.of().formatHex(hash);
 
-        byte[] hash = MessageDigest.getInstance("SHA-1")
-                .digest(fileContents.getBytes(StandardCharsets.UTF_8));
-        return HexFormat.of().formatHex(hash);
+        } catch (Exception e) {
+            System.out.println(e);
+        }
+        return null;
     }
 }
 
