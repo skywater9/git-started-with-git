@@ -43,9 +43,8 @@ public class Git {
     // Hashes file contents using SHA-1
     public String hashFile(String filePath) {
         try {
-            String fileContents = Files.readString(Path.of(filePath));
-            byte[] hash = MessageDigest.getInstance("SHA-1")
-                    .digest(fileContents.getBytes(StandardCharsets.UTF_8));
+            byte[] fileContents = Files.readAllBytes(Path.of(filePath));
+            byte[] hash = MessageDigest.getInstance("SHA-1").digest(fileContents);
             return HexFormat.of().formatHex(hash);
 
         } catch (Exception e) {
