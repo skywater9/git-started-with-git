@@ -4,22 +4,26 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.util.HexFormat;
+import java.util.List;
 
 public class Git {
     public static void main(String[] args) {
         Git myGit = new Git();
         myGit.init();
+        myGit.add("test1.txt");
+        myGit.add("test2.txt");
+        myGit.add("test1.txt");
     }
 
     // Initializes repository structure in ./git/: Objects/, Index, and HEAD
     public void init() {
         File git = new File("./git");
         File objects = new File("./git/objects");
-        File index = new File("./git/INDEX");
+        File INDEX = new File("./git/INDEX");
         File HEAD = new File("./git/HEAD");
 
         try {
-            if (git.mkdirs() || objects.mkdirs() || index.createNewFile() || HEAD.createNewFile()) {
+            if (git.mkdirs() || objects.mkdirs() || INDEX.createNewFile() || HEAD.createNewFile()) {
                 System.out.println("Git Repository Created");
             } else {
                 System.out.println("Git Repository Already Exists");
@@ -44,11 +48,14 @@ public class Git {
         return null;
     }
 
-    // Turns file into BLOB and inserts into git/objects/, and records in git/INDEX
+    // Turns file into BLOB with hash name and inserts into git/objects/, and records in git/INDEX
     public void add(String filePath) {
-        String fileHash = this.hashFile(filePath);
-        String blobPathString = "./git/objects/" + fileHash;
+        if (!Files.isRegularFile(Path.of(filePath))) {
+            return;
+        }
 
+        String fileHash = this.hashFile(filePath);
+        String blobPathString = "git/objects/" + fileHash;
         File blob = new File(blobPathString);
 
         try {
@@ -59,11 +66,33 @@ public class Git {
             System.out.println("File adding exception:" + e);
         }
 
-        String indexPathString = "/git/INDEX";
-        String indexEntry = fileHash + "    " + filePath + "\n";
 
-        try (FileWriter writer = new FileWriter(indexPathString, true)) {
-            writer.write(indexEntry);
+        String indexPathString = "git/INDEX";
+        String indexEntry = fileHash + "\t" + filePath + "\n";
+
+        // see if file was already indexed
+        try {
+            List<String> lines = Files.readAllLines(Path.of(indexPathString));
+            boolean replaced = false;
+
+            // false means rewrite the index instead of appending
+            try (FileWriter writer = new FileWriter(indexPathString, false)) {
+                for (String line : lines) {
+                    String[] lineParts = line.split("\t", 2);
+
+                    if (lineParts.length == 2 && lineParts[1].equals(filePath)) {
+                        writer.write(indexEntry);
+                        replaced = true;
+                    } else {
+                        writer.write(line + "\n");
+                    }
+                }
+
+                // if path wasn't already indexed do this
+                if (!replaced) {
+                    writer.write(indexEntry);
+                }
+            }
         } catch (IOException e) {
             System.out.println("Index writing exception: " + e);
         }
