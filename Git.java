@@ -23,14 +23,20 @@ public class Git {
         File HEAD = new File("./git/HEAD");
 
         try {
-            if (git.mkdirs() || objects.mkdirs() || INDEX.createNewFile() || HEAD.createNewFile()) {
+            boolean repoCreated = false;
+            repoCreated = (git.mkdirs() || repoCreated);
+            repoCreated = (objects.mkdirs() || repoCreated);
+            repoCreated = (INDEX.createNewFile() || repoCreated);
+            repoCreated = (HEAD.createNewFile() || repoCreated);
+
+            if (repoCreated) {
                 System.out.println("Git Repository Created");
             } else {
                 System.out.println("Git Repository Already Exists");
             }
 
-        } catch (Exception e) {
-            System.out.println("File creation exception:" + e);
+        } catch (IOException e) {
+            System.out.println("File creation exception: " + e);
         }
     }
 
