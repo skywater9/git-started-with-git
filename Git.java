@@ -1,5 +1,4 @@
 import java.io.*;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -8,22 +7,24 @@ import java.util.List;
 
 public class Git {
     public static void main(String[] args) {
-        Git myGit = new Git();
-        myGit.init();
+        Git git = new Git();
+        git.init();
+        git.add("test1.txt");
+        git.add("test2.txt");
     }
 
-    // Initializes repository structure in ./git/: Objects/, Index, and HEAD
+    // Initializes repository structure in ./git/: Objects/, index, and HEAD
     public void init() {
         File git = new File("./git");
         File objects = new File("./git/objects");
-        File INDEX = new File("./git/INDEX");
+        File index = new File("./git/index");
         File HEAD = new File("./git/HEAD");
 
         try {
             boolean repoCreated = false;
             repoCreated = (git.mkdirs() || repoCreated);
             repoCreated = (objects.mkdirs() || repoCreated);
-            repoCreated = (INDEX.createNewFile() || repoCreated);
+            repoCreated = (index.createNewFile() || repoCreated);
             repoCreated = (HEAD.createNewFile() || repoCreated);
 
             if (repoCreated) {
@@ -50,7 +51,7 @@ public class Git {
         return null;
     }
 
-    // Turns file into BLOB with hash name and inserts into git/objects/, and records in git/INDEX
+    // Turns file into BLOB with hash name and inserts into git/objects/, and records in git/index
     public void add(String filePath) {
         if (!Files.isRegularFile(Path.of(filePath))) {
             return;
@@ -69,8 +70,8 @@ public class Git {
         }
 
 
-        String indexPathString = "git/INDEX";
-        String indexEntry = fileHash + "\t" + filePath + "\n";
+        String indexPathString = "git/index";
+        String indexEntry = fileHash + " " + filePath + "\n";
 
         // see if file was already indexed
         try {
@@ -80,7 +81,7 @@ public class Git {
             // false means rewrite the index instead of appending
             try (FileWriter writer = new FileWriter(indexPathString, false)) {
                 for (String line : lines) {
-                    String[] lineParts = line.split("\t", 2);
+                    String[] lineParts = line.split(" ", 2);
 
                     if (lineParts.length == 2 && lineParts[1].equals(filePath)) {
                         writer.write(indexEntry);
