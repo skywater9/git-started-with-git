@@ -14,3 +14,6 @@ GitWrapper example tester:
     git.addFile("testFolder/helloworld.txt");
     String commitHash = git.commit("Me", "testing first commit");
     git.checkout(commitHash);
+
+GP5: Branches
+- Issue 1: empty commit does not work
