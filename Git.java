@@ -8,11 +8,25 @@ import java.util.HexFormat;
 import java.util.List;
 
 public class Git {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         GitWrapper git = new GitWrapper();
 
         // TESTING
 
+        String original = Files.readString(Path.of("demo.txt"));
+        git.init();
+        git.add("demo.txt");
+        git.add("demo-folder/nested.txt");
+        String commitA = git.commit("Demo", "commit A");
+
+        String changed = original + "changed for commit b\n";
+        Files.writeString(Path.of("demo.txt"), changed);
+        git.add("demo.txt");
+        String commitB = git.commit("Demo", "Commit B");
+
+        git.checkout(commitA);
+
+        git.checkout(commitB);
     }
 
     // Initializes repository structure in ./git/: Objects/, index, and HEAD
@@ -204,7 +218,17 @@ public class Git {
                         if (splitEntry.length <= indexOfFolder) {
                             break;
                         } else {
-                            if (splitEntry[indexOfFolder].equals(folderName) || indexOfFolder == 0) {
+                            // fix same named parents under different paths error
+                            String[] firstEntry = splitEntries.get(indexOfEntry);
+                            boolean sameParent = splitEntry.length == firstEntry.length;
+
+                            for (int j = 1; sameParent && j < splitEntry.length - 1; j++) {
+                                if (!splitEntry[j].equals(firstEntry[j])) {
+                                    sameParent = false;
+                                }
+                            }
+
+                            if (sameParent) {
                                 folderEntries.append(splitEntry[0].substring(0, 46));
                                 folderEntries.append(splitEntry[splitEntry.length - 1]);
                                 folderEntries.append("\n");
@@ -349,7 +373,7 @@ public class Git {
             // empty commit fix
             String indexString = "";
             if (!temp.isEmpty()) {
-                temp.substring(0, temp.length() - 1);
+                indexString = temp.substring(0, temp.length() - 1);
             }
 
             FileWriter indexWriter = new FileWriter("git/index");
@@ -372,7 +396,7 @@ public class Git {
             br.close();
 
             for (String tree : treeList) {
-                String[] entry = tree.split(" ");
+                String[] entry = tree.split(" ", 3);
                 if (entry[0].equals("tree")) {
                     String nextHash = entry[1];
                     index.append(regenerateIndexHelper(nextHash, path + "/" + entry[2]));

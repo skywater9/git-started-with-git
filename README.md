@@ -17,3 +17,5 @@ GitWrapper example tester:
 
 GP5: Branches
 - Issue 1: empty commit does not work
+- Issue 2: didn't support spaces in filenames
+
