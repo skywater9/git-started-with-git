@@ -29,10 +29,11 @@ public class Git {
         git.checkout(commitB);
     }
 
-    // Initializes repository structure in ./git/: Objects/, index, and HEAD
+    // initializes ./git/ with objects/, refs/heads/, index, and HEAD on main
     public void init() {
         File git = new File("./git");
         File objects = new File("./git/objects");
+        File heads = new File("./git/refs/heads");
         File index = new File("./git/index");
         File HEAD = new File("./git/HEAD");
 
@@ -40,8 +41,12 @@ public class Git {
             boolean repoCreated = false;
             repoCreated = (git.mkdirs() || repoCreated);
             repoCreated = (objects.mkdirs() || repoCreated);
+            repoCreated = (heads.mkdirs() || repoCreated);
             repoCreated = (index.createNewFile() || repoCreated);
-            repoCreated = (HEAD.createNewFile() || repoCreated);
+            if (HEAD.createNewFile()) {
+                Files.writeString(HEAD.toPath(), "ref: refs/heads/main");
+                repoCreated = true;
+            }
 
             if (repoCreated) {
                 System.out.println("Git Repository Created");
@@ -52,6 +57,30 @@ public class Git {
         } catch (IOException e) {
             System.out.println("File creation exception: " + e);
         }
+    }
+
+    // links head to a commit hash or an empty string before the first commit
+    public String getCurrentCommit() throws IOException {
+        String head = Files.readString(Path.of("git/HEAD")).trim();
+        if (head.startsWith("ref: ")) {
+            Path branch = Path.of("git", head.substring(5));
+            return Files.exists(branch) ? Files.readString(branch).trim() : "";
+        }
+        return head;
+    }
+
+    // creates a branch without switching HEAD
+    public void createBranch(String name) throws IOException {
+        // prevent overwriting an existing branch
+        Path branch = Path.of("git/refs/heads", name);
+        if (Files.exists(branch)) {
+            throw new IOException("Branch already exists: " + name);
+        }
+        String commitHash = getCurrentCommit();
+        if (commitHash.isEmpty()) {
+            throw new IOException("Cannot create a branch before the first commit");
+        }
+        Files.writeString(branch, commitHash);
     }
 
     // Hashes file contents using SHA-1
@@ -323,12 +352,10 @@ public class Git {
             StringBuilder commitString = new StringBuilder();
             commitString.append("tree: " + indexTree() + "\n");
 
-            BufferedReader br = new BufferedReader(new FileReader("git/HEAD"));
-            String line;
-            if ((line = br.readLine()) != null) {
-                commitString.append("parent: " + line + "\n");
+            String parent = getCurrentCommit();
+            if (!parent.isEmpty()) {
+                commitString.append("parent: " + parent + "\n");
             }
-            br.close();
             commitString.append("author: " + author + "\n");
             commitString.append("date: " + LocalDateTime.now() + "\n");
             commitString.append("message: " + message);
@@ -340,9 +367,12 @@ public class Git {
             commitFileWriter.write(commitString.toString());
             commitFileWriter.close();
 
-            FileWriter headWriter = new FileWriter("git/HEAD");
-            headWriter.write(commitHash);
-            headWriter.close();
+            String head = Files.readString(Path.of("git/HEAD")).trim();
+            if (head.startsWith("ref: ")) {
+                Files.writeString(Path.of("git", head.substring(5)), commitHash);
+            } else {
+                Files.writeString(Path.of("git/HEAD"), commitHash);
+            }
 
             return commitHash;
         } catch (IOException e) {
@@ -353,9 +383,10 @@ public class Git {
 
     public void regenerateIndex() {
         try {
-            BufferedReader headReader = new BufferedReader(new FileReader("git/HEAD"));
-            String commitHash = headReader.readLine();
-            headReader.close();
+            String commitHash = getCurrentCommit();
+            if (commitHash.isEmpty()) {
+                return;
+            }
             BufferedReader commitReader = new BufferedReader(new FileReader("git/objects/" + commitHash));
             String rootHash = "";
             String line;
@@ -380,7 +411,7 @@ public class Git {
             indexWriter.write(indexString);
             indexWriter.close();
         } catch (IOException e) {
-            return;
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -413,7 +444,7 @@ public class Git {
             return index.toString();
 
         } catch (IOException e) {
-            return "";
+            throw new UncheckedIOException(e);
         }
 
     }
