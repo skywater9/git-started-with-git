@@ -4,25 +4,36 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HexFormat;
 import java.util.List;
-import java.util.stream.Stream;
 
 public class Git {
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
         GitWrapper git = new GitWrapper();
-        // git.add("helloworld2.txt");
-        // git.add("testFolder/testfile.txt");
-        // git.commit("Me", "Commit B");
-        //git.checkout("7e76e6ef9e5c6d54c8d0ccbbe15e6029fb3e4fde");
-        git.checkout("ac7cedee8370f0c1d21737ad0481363225db6b91");
+
+        // TESTING
+
+        String original = Files.readString(Path.of("demo.txt"));
+        git.init();
+        git.add("demo.txt");
+        git.add("demo-folder/nested.txt");
+        String commitA = git.commit("Demo", "commit A");
+
+        String changed = original + "changed for commit b\n";
+        Files.writeString(Path.of("demo.txt"), changed);
+        git.add("demo.txt");
+        String commitB = git.commit("Demo", "Commit B");
+
+        git.checkout(commitA);
+
+        git.checkout(commitB);
     }
 
-    // Initializes repository structure in ./git/: Objects/, index, and HEAD
+    // initializes ./git/ with objects/, refs/heads/, index, and HEAD on main
     public void init() {
         File git = new File("./git");
         File objects = new File("./git/objects");
+        File heads = new File("./git/refs/heads");
         File index = new File("./git/index");
         File HEAD = new File("./git/HEAD");
 
@@ -30,8 +41,12 @@ public class Git {
             boolean repoCreated = false;
             repoCreated = (git.mkdirs() || repoCreated);
             repoCreated = (objects.mkdirs() || repoCreated);
+            repoCreated = (heads.mkdirs() || repoCreated);
             repoCreated = (index.createNewFile() || repoCreated);
-            repoCreated = (HEAD.createNewFile() || repoCreated);
+            if (HEAD.createNewFile()) {
+                Files.writeString(HEAD.toPath(), "ref: refs/heads/main");
+                repoCreated = true;
+            }
 
             if (repoCreated) {
                 System.out.println("Git Repository Created");
@@ -42,6 +57,30 @@ public class Git {
         } catch (IOException e) {
             System.out.println("File creation exception: " + e);
         }
+    }
+
+    // links head to a commit hash or an empty string before the first commit
+    public String getCurrentCommit() throws IOException {
+        String head = Files.readString(Path.of("git/HEAD")).trim();
+        if (head.startsWith("ref: ")) {
+            Path branch = Path.of("git", head.substring(5));
+            return Files.exists(branch) ? Files.readString(branch).trim() : "";
+        }
+        return head;
+    }
+
+    // creates a branch without switching HEAD
+    public void createBranch(String name) throws IOException {
+        // prevent overwriting an existing branch
+        Path branch = Path.of("git/refs/heads", name);
+        if (Files.exists(branch)) {
+            throw new IOException("Branch already exists: " + name);
+        }
+        String commitHash = getCurrentCommit();
+        if (commitHash.isEmpty()) {
+            throw new IOException("Cannot create a branch before the first commit");
+        }
+        Files.writeString(branch, commitHash);
     }
 
     // Hashes file contents using SHA-1
@@ -69,7 +108,8 @@ public class Git {
         return null;
     }
 
-    // Turns file into BLOB with hash name and inserts into git/objects/, and records in git/index
+    // Turns file into BLOB with hash name and inserts into git/objects/, and
+    // records in git/index
     public void addFile(String filePath) {
         try {
             if (!Files.isRegularFile(Path.of(filePath))) {
@@ -83,7 +123,6 @@ public class Git {
             blob.createNewFile();
             byte[] contents = Files.readAllBytes(Path.of(filePath));
             Files.write(Path.of(blobPathString), contents);
-
 
             String indexPathString = "git/index";
             String indexEntry = fileHash + " " + "git-started-with-git/" + filePath;
@@ -171,6 +210,20 @@ public class Git {
             for (String listEntry : workingList) {
                 splitEntries.add(listEntry.split("/"));
             }
+
+            // empty commit fix
+            if (splitEntries.isEmpty()) {
+                String emptyTreeHash = hashString("");
+                Files.writeString(Path.of("git/objects", emptyTreeHash), "");
+
+                String rootTree = "tree " + emptyTreeHash + " git-started-with-git";
+                String rootHash = hashString(rootTree);
+                Files.writeString(Path.of("git/objects", rootHash), rootTree);
+
+                indexReader.close();
+                return rootHash;
+            }
+
             while (splitEntries.size() > 1) {
                 splitEntries = sort(splitEntries);
                 StringBuilder folderEntries = new StringBuilder();
@@ -194,7 +247,17 @@ public class Git {
                         if (splitEntry.length <= indexOfFolder) {
                             break;
                         } else {
-                            if (splitEntry[indexOfFolder].equals(folderName) || indexOfFolder == 0) {
+                            // fix same named parents under different paths error
+                            String[] firstEntry = splitEntries.get(indexOfEntry);
+                            boolean sameParent = splitEntry.length == firstEntry.length;
+
+                            for (int j = 1; sameParent && j < splitEntry.length - 1; j++) {
+                                if (!splitEntry[j].equals(firstEntry[j])) {
+                                    sameParent = false;
+                                }
+                            }
+
+                            if (sameParent) {
                                 folderEntries.append(splitEntry[0].substring(0, 46));
                                 folderEntries.append(splitEntry[splitEntry.length - 1]);
                                 folderEntries.append("\n");
@@ -224,8 +287,7 @@ public class Git {
                 String folderPathString = folderPath.toString();
                 String newEntry = "tree " + folderHash + " "
                         + folderPathString.substring(0, folderPathString.length() - 1);
-                for (int entryToRemove =
-                        entriesToRemove.size() - 1; entryToRemove >= 0; entryToRemove--) {
+                for (int entryToRemove = entriesToRemove.size() - 1; entryToRemove >= 0; entryToRemove--) {
                     splitEntries.remove((int) entriesToRemove.get(entryToRemove));
                 }
                 splitEntries.add(newEntry.split("/"));
@@ -239,26 +301,27 @@ public class Git {
 
             String potentialRootTreeString = ret.substring(0, ret.length() - 1);
 
-            // fixing the bug where a single line is left in the working tree that is NOT the root
+            // fixing the bug where a single line is left in the working tree that is NOT
+            // the root
             // writes root tree to objects
             String rootHash = "";
             if (!potentialRootTreeString.split(" ")[2].equals("git-started-with-git")) {
                 String blobHash = hashString(potentialRootTreeString);
                 FileWriter blobWriter = new FileWriter("git/objects/" + blobHash);
                 blobWriter.write(potentialRootTreeString);
-                blobWriter.close(); 
+                blobWriter.close();
                 String actualRootTreeString = "tree " + blobHash + " git-started-with-git";
                 rootHash = hashString(actualRootTreeString);
                 FileWriter rootTreeWriter = new FileWriter("git/objects/" + rootHash);
                 rootTreeWriter.write(actualRootTreeString);
-                rootTreeWriter.close(); 
+                rootTreeWriter.close();
             } else {
                 rootHash = hashString(potentialRootTreeString);
                 FileWriter rootTreeWriter = new FileWriter("git/objects/" + rootHash);
                 rootTreeWriter.write(ret.substring(0, ret.length() - 1));
-                rootTreeWriter.close(); 
+                rootTreeWriter.close();
             }
-           
+
             return rootHash;
         } catch (IOException e) {
             e.printStackTrace();
@@ -289,12 +352,10 @@ public class Git {
             StringBuilder commitString = new StringBuilder();
             commitString.append("tree: " + indexTree() + "\n");
 
-            BufferedReader br = new BufferedReader(new FileReader("git/HEAD"));
-            String line;
-            if ((line = br.readLine()) != null) {
-                commitString.append("parent: " + line + "\n");
+            String parent = getCurrentCommit();
+            if (!parent.isEmpty()) {
+                commitString.append("parent: " + parent + "\n");
             }
-            br.close();
             commitString.append("author: " + author + "\n");
             commitString.append("date: " + LocalDateTime.now() + "\n");
             commitString.append("message: " + message);
@@ -305,10 +366,13 @@ public class Git {
             FileWriter commitFileWriter = new FileWriter(commitFile.getPath());
             commitFileWriter.write(commitString.toString());
             commitFileWriter.close();
-            
-            FileWriter headWriter = new FileWriter("git/HEAD");
-            headWriter.write(commitHash);
-            headWriter.close();
+
+            String head = Files.readString(Path.of("git/HEAD")).trim();
+            if (head.startsWith("ref: ")) {
+                Files.writeString(Path.of("git", head.substring(5)), commitHash);
+            } else {
+                Files.writeString(Path.of("git/HEAD"), commitHash);
+            }
 
             return commitHash;
         } catch (IOException e) {
@@ -319,9 +383,10 @@ public class Git {
 
     public void regenerateIndex() {
         try {
-            BufferedReader headReader = new BufferedReader(new FileReader("git/HEAD"));
-            String commitHash = headReader.readLine();
-            headReader.close();
+            String commitHash = getCurrentCommit();
+            if (commitHash.isEmpty()) {
+                return;
+            }
             BufferedReader commitReader = new BufferedReader(new FileReader("git/objects/" + commitHash));
             String rootHash = "";
             String line;
@@ -335,12 +400,18 @@ public class Git {
             String startingHash = rootReader.readLine().split(" ")[1];
             rootReader.close();
             String temp = regenerateIndexHelper(startingHash, "git-started-with-git");
-            String indexString = temp.substring(0, temp.length() - 1);
+
+            // empty commit fix
+            String indexString = "";
+            if (!temp.isEmpty()) {
+                indexString = temp.substring(0, temp.length() - 1);
+            }
+
             FileWriter indexWriter = new FileWriter("git/index");
             indexWriter.write(indexString);
             indexWriter.close();
         } catch (IOException e) {
-            return;
+            throw new UncheckedIOException(e);
         }
     }
 
@@ -356,7 +427,7 @@ public class Git {
             br.close();
 
             for (String tree : treeList) {
-                String[] entry = tree.split(" ");
+                String[] entry = tree.split(" ", 3);
                 if (entry[0].equals("tree")) {
                     String nextHash = entry[1];
                     index.append(regenerateIndexHelper(nextHash, path + "/" + entry[2]));
@@ -373,11 +444,9 @@ public class Git {
             return index.toString();
 
         } catch (IOException e) {
-            return "";
+            throw new UncheckedIOException(e);
         }
-        
+
     }
 
 }
-
-

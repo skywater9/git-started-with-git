@@ -1,0 +1,3 @@
+first file for commit A
+changed for commit B
+changed for commit b

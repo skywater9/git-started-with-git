@@ -1,9 +1,10 @@
 import java.io.IOException;
-import java.util.ArrayList;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.nio.file.Files;
+import java.nio.file.Path;
 
 public class GitWrapper {
 
@@ -25,6 +26,7 @@ public class GitWrapper {
      * If the file is a directory, it throws an IOException.
      * If the file is already in the index, it does nothing.
      * If the file is successfully staged, it creates a blob for the file.
+     * 
      * @param filePath The path to the file to be staged.
      */
     public void add(String filePath) {
@@ -35,7 +37,8 @@ public class GitWrapper {
 
     /**
      * Creates a commit with the given author and message.
-     * It should capture the current state of the repository by building trees based on the index file,
+     * It should capture the current state of the repository by building trees based
+     * on the index file,
      * writing the tree to the objects directory,
      * writing the commit to the objects directory,
      * updating the HEAD file,
@@ -58,6 +61,44 @@ public class GitWrapper {
         return git.commit(author, message);
     }
 
+    /** Creates a branch at the current commit without switching to it. */
+    public void createBranch(String name) throws IOException {
+        Git git = new Git();
+        git.createBranch(name);
+    }
+
+    // Check out a branch or commit hash, creating unknown branch names.
+    public void checkout(String target) throws IOException {
+        Path branch = Path.of("git/refs/heads", target);
+        boolean isBranch = Files.isRegularFile(branch);
+        String commitHash = target;
+        if (isBranch) {
+            commitHash = Files.readString(branch).trim();
+        }
+        // only commit objects should restore files
+        boolean isCommit = false;
+        if (Files.isRegularFile(Path.of("git/objects", commitHash))) {
+            try (BufferedReader reader = new BufferedReader(new FileReader("git/objects/" + commitHash))) {
+                String firstLine = reader.readLine();
+                isCommit = firstLine != null
+                        && firstLine.startsWith("tree: ")
+                        && firstLine.length() == 46;
+            }
+        }
+        if (!isCommit) {
+            if (!isBranch) {
+                createBranch(target);
+                Files.writeString(Path.of("git/HEAD"), "ref: refs/heads/" + target);
+                return;
+            }
+            throw new IOException("unknown branch or commit: " + target);
+        }
+        checkoutCommit(commitHash);
+        if (isBranch) {
+            Files.writeString(Path.of("git/HEAD"), "ref: refs/heads/" + target);
+        }
+    }
+
     /**
      * Checks out a specific commit given its hash.
      * This method should read the HEAD file to determine the "checked out" commit.
@@ -67,16 +108,16 @@ public class GitWrapper {
      *
      * @param commitHash The SHA1 hash of the commit to check out.
      */
-    public void checkout(String commitHash) {
+    private void checkoutCommit(String commitHash) throws IOException {
         try {
             BufferedReader indexReader = new BufferedReader(new FileReader("git/index"));
             String line;
             while ((line = indexReader.readLine()) != null) {
-                File file = new File(line.split(" ")[1].substring(21));
+                File file = new File(line.split(" ", 2)[1].substring(21));
                 if (file.exists()) {
                     file.delete();
                 }
-                String[] fileParents = line.split(" ")[1].substring(21).split("/");
+                String[] fileParents = line.split(" ", 2)[1].substring(21).split("/");
                 String path = "";
                 for (String dirPath : fileParents) {
                     File dir = new File(path + dirPath);
@@ -96,14 +137,14 @@ public class GitWrapper {
             BufferedReader indexReader2 = new BufferedReader(new FileReader("git/index"));
             String line2;
             while ((line2 = indexReader2.readLine()) != null) {
-                String[] dirsToMake = line2.split(" ")[1].substring(21).split("/");
+                String[] dirsToMake = line2.split(" ", 2)[1].substring(21).split("/");
                 String trackDirPath = "";
                 for (int i = 0; i < dirsToMake.length; i++) {
                     String dirPath = dirsToMake[i];
                     File file = new File(trackDirPath + dirPath);
                     if (i != dirsToMake.length - 1) {
                         file.mkdir();
-                        trackDirPath = dirPath + "/";
+                        trackDirPath = dirPath += "/";
                     } else {
                         file.createNewFile();
                         String fileHash = line2.split(" ")[0];
@@ -126,13 +167,13 @@ public class GitWrapper {
                         fileWriter.close();
                         trackDirPath = "";
                     }
-                    
+
                 }
             }
             indexReader2.close();
         } catch (IOException e) {
-            return;
+            throw e;
         }
-        
+
     }
 }

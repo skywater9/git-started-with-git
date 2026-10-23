@@ -5,8 +5,6 @@ Methods and Functions:
 - hash(String filePath) --- Hashes file contents using SHA-1
 - add(String filePath) --- Turns file into BLOB with hash name and inserts into git/objects/, and records in git/INDEX
 
-No bugs to fix.
-
 GitWrapper example tester:
     GitWrapper git = new GitWrapper();
     git.init();
@@ -14,3 +12,8 @@ GitWrapper example tester:
     git.addFile("testFolder/helloworld.txt");
     String commitHash = git.commit("Me", "testing first commit");
     git.checkout(commitHash);
+
+GP5: Branches
+- Issue 1: empty commit does not work
+- Issue 2: didn't support spaces in filenames
+
